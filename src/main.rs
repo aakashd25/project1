@@ -1,27 +1,24 @@
+// Packages
 extern crate csv;
-extern crate rand;
 
 use csv::ReaderBuilder;
-use rand::seq::SliceRandom;
-use std::error::Error;
-use std::fs::File;
 
 // Define a struct to represent a patient
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Patient {
     features: Vec<f64>,
     diagnosis: u8,
 }
 
-// Function to load and prepare the dataset
-fn load_and_prepare_data(file_path: &str) -> Result<Vec<Patient>, Box<dyn Error>> {
+// Open and Read Heart Disease Dataset
+fn load_and_prepare_data(file_path: &str) -> Result<Vec<Patient>, csv::Error> {
     let mut rdr = ReaderBuilder::new().from_path(file_path)?;
     let mut patients = Vec::new();
 
     for result in rdr.records() {
         let record = result?;
-        let features: Vec<f64> = record.iter().take(record.len() - 1).map(|v| v.parse::<f64>().unwrap()).collect();
-        let diagnosis: u8 = record[record.len() - 1].parse::<u8>().unwrap();
+        let features: Vec<f64> = record.iter().take(record.len() - 1).map(|v| v.parse().unwrap()).collect();
+        let diagnosis: u8 = record[record.len() - 1].parse().unwrap();
         let patient = Patient { features, diagnosis };
         patients.push(patient);
     }
@@ -29,107 +26,68 @@ fn load_and_prepare_data(file_path: &str) -> Result<Vec<Patient>, Box<dyn Error>
     Ok(patients)
 }
 
-// Function to perform k-means clustering
-fn k_means_clustering(patients: &[Patient], k: usize) -> Result<Vec<usize>, Box<dyn Error>> {
-    let features = patients[0].features.len();
-    let mut rng = rand::thread_rng();
 
-    // Randomly shuffle indices and take the first k as initial centroids
-    let mut indices: Vec<usize> = (0..patients.len()).collect();
-    indices.shuffle(&mut rng);
-    let mut centroids: Vec<Vec<f64>> = indices.iter()
-        .take(k)
-        .map(|&i| patients[i].features.clone())
-        .collect();
+// Primary Analysis: Split the data into patients diagnosed with heart disease (1) and those who are not (0)
+fn split_diagnosis(patients: &[Patient]) -> (Vec<Patient>, Vec<Patient>) {
+    let mut diagnosed_with_disease: Vec<Patient> = Vec::new();
+    let mut not_diagnosed_with_disease: Vec<Patient> = Vec::new();
 
-    // Perform k-means clustering
-    let mut clusters = vec![0; patients.len()];
-    for _ in 0..10 { // Perform 10 iterations
-        // Assign each patient to the nearest centroid
-        for (i, patient) in patients.iter().enumerate() {
-            let mut min_distance = f64::INFINITY;
-            let mut cluster_id = 0;
-            for (j, centroid) in centroids.iter().enumerate() {
-                let distance = euclidean_distance(&patient.features, centroid);
-                if distance < min_distance {
-                    min_distance = distance;
-                    cluster_id = j;
-                }
-            }
-            clusters[i] = cluster_id;
-        }
+    for patient in patients {
+        // Clone the entire Patient object
+        let cloned_patient = patient.clone();
 
-        // Update centroids based on cluster assignments
-        for cluster_id in 0..k {
-            let mut cluster_patients = Vec::new();
-            for (&c, p) in clusters.iter().zip(patients.iter()) {
-                if c == cluster_id {
-                    cluster_patients.push(p);
-                }
-            }
-            if !cluster_patients.is_empty() {
-                let mut new_centroid = vec![0.0; features];
-                for patient in &cluster_patients {
-                    for (i, &feature) in patient.features.iter().enumerate() {
-                        new_centroid[i] += feature;
-                    }
-                }
-                centroids[cluster_id] = new_centroid.iter().map(|&x| x / cluster_patients.len() as f64).collect();
-            }
+        if cloned_patient.diagnosis == 1 {
+            diagnosed_with_disease.push(cloned_patient);
+        } else {
+            not_diagnosed_with_disease.push(cloned_patient);
         }
     }
 
-    Ok(clusters)
+    (diagnosed_with_disease, not_diagnosed_with_disease)
 }
 
-// Function to calculate Euclidean distance between two vectors
-fn euclidean_distance(vec1: &[f64], vec2: &[f64]) -> f64 {
-    let squared_distance: f64 = vec1.iter()
-        .zip(vec2.iter())
-        .map(|(&x, &y)| (x - y).powi(2))
-        .sum();
-    squared_distance.sqrt()
-}
+// Calculate median for all symptoms in each group and output the values
+fn calculate_median(patients: &[Patient]) -> Vec<f64> {
+    let num_symptoms = patients[0].features.len();
+    let mut medians = vec![0.0; num_symptoms];
 
-// Function to select representatives from each cluster
-fn select_representatives(patients: &[Patient], clusters: &[usize], k: usize) -> Vec<Vec<f64>> {
-    let mut representatives = vec![vec![0.0; patients[0].features.len()]; k];
+    for i in 0..num_symptoms {
+        let mut values: Vec<f64> = patients.iter().map(|p| p.features[i]).collect();
+        values.sort_by(|a, b| a.partial_cmp(b).unwrap()); // Sort the values
 
-    // Calculate mean values of features for each cluster
-    let mut cluster_counts = vec![0; k];
-    for (patient, &cluster_id) in patients.iter().zip(clusters) {
-        cluster_counts[cluster_id] += 1;
-        for (i, &feature) in patient.features.iter().enumerate() {
-            representatives[cluster_id][i] += feature;
-        }
+        let median = if values.len() % 2 == 0 {
+            let mid = values.len() / 2;
+            (values[mid - 1] + values[mid]) / 2.0 // Calculate median for even number of elements
+        } else {
+            values[values.len() / 2] // Calculate median for odd number of elements
+        };
+
+        medians[i] = median;
     }
 
-    for (i, count) in cluster_counts.iter().enumerate() {
-        if *count > 0 {
-            representatives[i] = representatives[i].iter().map(|&x| x / *count as f64).collect();
-        }
-    }
-
-    representatives
+    medians
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
-    let file_path = "heart_disease.csv"; // Change to your file path
-    let patients = load_and_prepare_data(file_path)?;
+fn main() {
+    // Load and Prepare the dataset
+    let file_path = "heart_disease.csv";
+    let patients = load_and_prepare_data(file_path).expect("Error loading data.");
 
-    let k = 2; // Number of clusters
+    // Primary Analysis
+    let (diagnosed_with_disease, not_diagnosed_with_disease) = split_diagnosis(&patients);
+    println!("Patients Diagnosed with Heart Disease:");
+    println!("{:?}", diagnosed_with_disease);
+    println!("Patients Not Diagnosed with Heart Disease:");
+    println!("{:?}", not_diagnosed_with_disease);
 
-    // Perform k-means clustering
-    let clusters = k_means_clustering(&patients, k)?;
+    // Calculate Median for all symptoms in each group
+    let median_diagnosed = calculate_median(&diagnosed_with_disease);
+    let median_not_diagnosed = calculate_median(&not_diagnosed_with_disease);
+    println!("Median Symptoms for Patients Diagnosed with Heart Disease: {:?}", median_diagnosed);
+    println!("Median Symptoms for Patients Not Diagnosed with Heart Disease: {:?}", median_not_diagnosed);
 
-    // Select representatives from each cluster
-    let representatives = select_representatives(&patients, &clusters, k);
-
-    // Print representatives
-    println!("Representatives:");
-    for (i, rep) in representatives.iter().enumerate() {
-        println!("Cluster {}: {:?}", i, rep);
-    }
-
-    Ok(())
+    // Rank the representative values from each cluster from highest to lowest of the value of heart disease
+    // Placeholder for ranking representatives
 }
+
+// Rank the representitive values from each cluster from highest to lowest of the value of heart disease
