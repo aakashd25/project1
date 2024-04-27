@@ -1,13 +1,29 @@
-// Packages
+
 extern crate csv;
+extern crate statrs;
 
 use csv::ReaderBuilder;
+use std::error::Error;
+use std::fs::File;
+use std::path::Path;
+use statrs::statistics::Statistics;
+
 
 // Define a struct to represent a patient
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct Patient {
     features: Vec<f64>,
     diagnosis: u8,
+}
+
+// Implement the Clone trait for the Patient struct
+impl Clone for Patient {
+    fn clone(&self) -> Self {
+        Self {
+            features: self.features.clone(),
+            diagnosis: self.diagnosis,
+        }
+    }
 }
 
 // Open and Read Heart Disease Dataset
@@ -26,20 +42,16 @@ fn load_and_prepare_data(file_path: &str) -> Result<Vec<Patient>, csv::Error> {
     Ok(patients)
 }
 
-
 // Primary Analysis: Split the data into patients diagnosed with heart disease (1) and those who are not (0)
 fn split_diagnosis(patients: &[Patient]) -> (Vec<Patient>, Vec<Patient>) {
-    let mut diagnosed_with_disease: Vec<Patient> = Vec::new();
-    let mut not_diagnosed_with_disease: Vec<Patient> = Vec::new();
+    let mut diagnosed_with_disease = Vec::new();
+    let mut not_diagnosed_with_disease = Vec::new();
 
     for patient in patients {
-        // Clone the entire Patient object
-        let cloned_patient = patient.clone();
-
-        if cloned_patient.diagnosis == 1 {
-            diagnosed_with_disease.push(cloned_patient);
+        if patient.diagnosis == 1 {
+            diagnosed_with_disease.push(patient.clone());
         } else {
-            not_diagnosed_with_disease.push(cloned_patient);
+            not_diagnosed_with_disease.push(patient.clone());
         }
     }
 
@@ -68,6 +80,26 @@ fn calculate_median(patients: &[Patient]) -> Vec<f64> {
     medians
 }
 
+fn correlation(x: &[f64], y: &[f64]) -> f64 {
+    let n = x.len();
+    assert_eq!(n, y.len());
+
+    let sum_x: f64 = x.iter().sum();
+    let sum_y: f64 = y.iter().sum();
+
+    let sum_x_sq: f64 = x.iter().map(|&xi| xi * xi).sum();
+    let sum_y_sq: f64 = y.iter().map(|&yi| yi * yi).sum();
+
+    let sum_xy: f64 = x.iter().zip(y.iter()).map(|(&xi, &yi)| xi * yi).sum();
+
+    let numerator = n as f64 * sum_xy - sum_x * sum_y;
+    let denominator = ((n as f64 * sum_x_sq - sum_x * sum_x) * (n as f64 * sum_y_sq - sum_y * sum_y)).sqrt();
+
+    numerator / denominator
+}
+
+
+
 fn main() {
     // Load and Prepare the dataset
     let file_path = "heart_disease.csv";
@@ -76,9 +108,9 @@ fn main() {
     // Primary Analysis
     let (diagnosed_with_disease, not_diagnosed_with_disease) = split_diagnosis(&patients);
     println!("Patients Diagnosed with Heart Disease:");
-    println!("{:?}", diagnosed_with_disease);
+//    println!("{:?}", diagnosed_with_disease);
     println!("Patients Not Diagnosed with Heart Disease:");
-    println!("{:?}", not_diagnosed_with_disease);
+//    println!("{:?}", not_diagnosed_with_disease);
 
     // Calculate Median for all symptoms in each group
     let median_diagnosed = calculate_median(&diagnosed_with_disease);
@@ -86,8 +118,4 @@ fn main() {
     println!("Median Symptoms for Patients Diagnosed with Heart Disease: {:?}", median_diagnosed);
     println!("Median Symptoms for Patients Not Diagnosed with Heart Disease: {:?}", median_not_diagnosed);
 
-    // Rank the representative values from each cluster from highest to lowest of the value of heart disease
-    // Placeholder for ranking representatives
 }
-
-// Rank the representitive values from each cluster from highest to lowest of the value of heart disease

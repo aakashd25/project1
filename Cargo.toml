@@ -7,3 +7,6 @@ edition = "2021"
 
 [dependencies]
 csv = "1.1.6"
+statrs = "0.14.0"
+
+
