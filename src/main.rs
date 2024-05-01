@@ -1,39 +1,31 @@
-
 extern crate csv;
-extern crate statrs;
+extern crate rand;
 
-use csv::ReaderBuilder;
+use rand::prelude::*;
 use std::error::Error;
 use std::fs::File;
 use std::path::Path;
-use statrs::statistics::Statistics;
-
 
 // Define a struct to represent a patient
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Patient {
     features: Vec<f64>,
     diagnosis: u8,
 }
 
-// Implement the Clone trait for the Patient struct
-impl Clone for Patient {
-    fn clone(&self) -> Self {
-        Self {
-            features: self.features.clone(),
-            diagnosis: self.diagnosis,
-        }
-    }
-}
 
 // Open and Read Heart Disease Dataset
 fn load_and_prepare_data(file_path: &str) -> Result<Vec<Patient>, csv::Error> {
-    let mut rdr = ReaderBuilder::new().from_path(file_path)?;
+    let mut rdr = csv::ReaderBuilder::new().from_path(file_path)?;
     let mut patients = Vec::new();
 
     for result in rdr.records() {
         let record = result?;
-        let features: Vec<f64> = record.iter().take(record.len() - 1).map(|v| v.parse().unwrap()).collect();
+        let features: Vec<f64> = record
+            .iter()
+            .take(record.len() - 1)
+            .map(|v| v.parse().unwrap())
+            .collect();
         let diagnosis: u8 = record[record.len() - 1].parse().unwrap();
         let patient = Patient { features, diagnosis };
         patients.push(patient);
@@ -80,25 +72,79 @@ fn calculate_median(patients: &[Patient]) -> Vec<f64> {
     medians
 }
 
-fn correlation(x: &[f64], y: &[f64]) -> f64 {
-    let n = x.len();
-    assert_eq!(n, y.len());
+// K-means clustering algorithm
+fn kmeans(k: usize, patients: &[Patient], max_iter: usize) -> Vec<Vec<f64>> {
+    let mut rng = thread_rng();
+    let num_features = patients[0].features.len();
 
-    let sum_x: f64 = x.iter().sum();
-    let sum_y: f64 = y.iter().sum();
+    // Initialize clusters with random centroids within the range of data values
+    let mut centroids: Vec<Vec<f64>> = (0..k)
+    .map(|_| {
+        let mut centroid = vec![0.0; num_features];
+        for j in 0..num_features {
+            let min_val = patients.iter().map(|p| p.features[j]).min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
+            let max_val = patients.iter().map(|p| p.features[j]).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
+            centroid[j] = rng.gen_range(min_val..max_val);
+        }
+        centroid
+    })
+    .collect();
 
-    let sum_x_sq: f64 = x.iter().map(|&xi| xi * xi).sum();
-    let sum_y_sq: f64 = y.iter().map(|&yi| yi * yi).sum();
+    // Iterate until convergence or maximum iterations reached
+    for _ in 0..max_iter {
+        let mut clusters: Vec<Vec<Patient>> = vec![Vec::new(); k];
 
-    let sum_xy: f64 = x.iter().zip(y.iter()).map(|(&xi, &yi)| xi * yi).sum();
+        // Assign each patient to the nearest cluster
+        for patient in patients {
+            let mut min_distance = f64::INFINITY;
+            let mut nearest_cluster_idx = 0;
 
-    let numerator = n as f64 * sum_xy - sum_x * sum_y;
-    let denominator = ((n as f64 * sum_x_sq - sum_x * sum_x) * (n as f64 * sum_y_sq - sum_y * sum_y)).sqrt();
+            for (i, centroid) in centroids.iter().enumerate() {
+                let distance = euclidean_distance(&patient.features, centroid);
+                if distance < min_distance {
+                    min_distance = distance;
+                    nearest_cluster_idx = i;
+                }
+            }
 
-    numerator / denominator
+            clusters[nearest_cluster_idx].push(patient.clone());
+        }
+
+        // Update cluster centroids
+        let mut converged = true;
+        for (i, cluster) in clusters.iter().enumerate() {
+            let num_members = cluster.len() as f64;
+            if num_members > 0.0 {
+                let mut new_centroid = vec![0.0; num_features];
+                for member in cluster {
+                    for (j, feature) in member.features.iter().enumerate() {
+                        new_centroid[j] += feature / num_members;
+                    }
+                }
+
+                if new_centroid != centroids[i] {
+                    converged = false;
+                    centroids[i] = new_centroid;
+                }
+            }
+        }
+
+        if converged {
+            break;
+        }
+    }
+
+    centroids
 }
 
-
+// Calculate Euclidean distance between two vectors
+fn euclidean_distance(vec1: &[f64], vec2: &[f64]) -> f64 {
+    vec1.iter()
+        .zip(vec2.iter())
+        .map(|(&x, &y)| (x - y).powi(2))
+        .sum::<f64>()
+        .sqrt()
+}
 
 fn main() {
     // Load and Prepare the dataset
@@ -118,4 +164,14 @@ fn main() {
     println!("Median Symptoms for Patients Diagnosed with Heart Disease: {:?}", median_diagnosed);
     println!("Median Symptoms for Patients Not Diagnosed with Heart Disease: {:?}", median_not_diagnosed);
 
+    // Perform K-means clustering
+    let k = 4;
+    let max_iter = 100;
+    let centroids = kmeans(k, &patients, max_iter);
+
+    // Print centroids
+    for (i, centroid) in centroids.iter().enumerate() {
+        println!("Centroid {}: {:?}", i + 1, centroid);
+    }
 }
+
