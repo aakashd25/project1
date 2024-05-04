@@ -1,7 +1,10 @@
+// DS 210 Final Project - Rust
+// Packages
 extern crate csv;
 extern crate rand;
 
 use rand::prelude::*;
+use std::collections::HashSet;
 use std::error::Error;
 use std::fs::File;
 use std::path::Path;
@@ -13,6 +16,94 @@ struct Patient {
     diagnosis: u8,
 }
 
+// Define a struct to represent patient features
+struct PatientFeatures {
+    rest_bp: f64,
+    chest_pain: f64,
+    thalassemia: f64,
+    age: f64,
+    fasting_bs: f64,
+    max_hr: f64,
+    exercise_angina: f64,
+    gender: f64,
+    st_slope: f64,
+    cholesterol: f64,
+    st_depression: f64,
+    rest_ecg: f64,
+    num_vessels: f64,
+}
+
+// Define a struct to represent a patient graph
+struct PatientGraph {
+    // Define fields to represent the graph (e.g., adjacency list or matrix)
+    adjacency_list: Vec<HashSet<usize>>,
+}
+
+impl PatientGraph {
+
+    // Constructor
+    fn new() -> Self {
+        Self {
+            adjacency_list: Vec::new(),
+        }
+    }
+
+    // Method to add an edge between two patients
+    fn add_edge(&mut self, u: usize, v: usize) {
+        // Assuming an undirected graph
+        self.adjacency_list[u].insert(v);
+        self.adjacency_list[v].insert(u);
+    }
+
+    // K-core decomposition algorithm
+    fn k_core_decomposition(&self, k: usize) -> Vec<HashSet<usize>> {
+        let mut graph = self.adjacency_list.clone();
+        let mut cores = Vec::new();
+
+        while !graph.is_empty() {
+            let mut current_core = HashSet::new();
+            let mut updated = true;
+
+            // Iteratively remove nodes with degree less than k
+            while updated {
+                updated = false;
+                let mut to_remove = Vec::new();
+                for (node, neighbors) in graph.iter().enumerate() {
+                    if neighbors.len() < k {
+                        to_remove.push(node);
+                        updated = true;
+                    }
+                }
+                for node in &to_remove {
+                    graph[*node].clear();
+                    for neighbors in &mut graph {
+                        neighbors.remove(node);
+                    }
+                }
+            }
+
+            // Extract current core nodes
+            for node in 0..graph.len() {
+                if !graph[node].is_empty() {
+                    current_core.insert(node);
+                }
+            }
+            cores.push(current_core.clone());
+
+            // Remove current core from the graph
+            for node in &current_core {
+                graph[*node].clear();
+            }
+            for neighbors in &mut graph {
+                for node in &current_core {
+                    neighbors.remove(node);
+                }
+            }
+        }
+
+        cores
+    }
+}
 
 // Open and Read Heart Disease Dataset
 fn load_and_prepare_data(file_path: &str) -> Result<Vec<Patient>, csv::Error> {
@@ -146,7 +237,39 @@ fn euclidean_distance(vec1: &[f64], vec2: &[f64]) -> f64 {
         .sqrt()
 }
 
+// Constructing Patient Graph
+fn construct_patient_graph(patients: &[Patient]) -> PatientGraph {
+    let num_patients = patients.len();
+    let mut adjacency_list = vec![HashSet::new(); num_patients];
+
+    for i in 0..num_patients {
+        for j in i + 1..num_patients {
+            let similarity = compute_similarity(&patients[i], &patients[j]);
+
+            // Add an edge if similarity exceeds a threshold
+            if similarity >= 0.5 {
+                adjacency_list[i].insert(j);
+                adjacency_list[j].insert(i);
+            }
+        }
+    }
+
+    PatientGraph { adjacency_list }
+}
+
+// Computing Similarity of Patients
+fn compute_similarity(patient1: &Patient, patient2: &Patient) -> f64 {
+    let mut similarity = 0.0;
+    for (feature1, feature2) in patient1.features.iter().zip(patient2.features.iter()) {
+        if (feature1 - feature2).abs() < 0.001 { // Adjust epsilon according to your data
+            similarity += 1.0;
+        }
+    }
+    similarity / patient1.features.len() as f64 // Normalize by the number of features
+}
+
 fn main() {
+
     // Load and Prepare the dataset
     let file_path = "heart_disease.csv";
     let patients = load_and_prepare_data(file_path).expect("Error loading data.");
@@ -154,11 +277,13 @@ fn main() {
     // Primary Analysis
     let (diagnosed_with_disease, not_diagnosed_with_disease) = split_diagnosis(&patients);
     println!("Patients Diagnosed with Heart Disease:");
-//    println!("{:?}", diagnosed_with_disease);
+    println!("{:?}", diagnosed_with_disease);
     println!("Patients Not Diagnosed with Heart Disease:");
-//    println!("{:?}", not_diagnosed_with_disease);
+    println!("{:?}", not_diagnosed_with_disease);
 
     // Calculate Median for all symptoms in each group
+    println!("Data Values: rest_bp,chest_pain,thalassemia,age,fasting_bs,max_hr,exercise_angina,gender,st_slope,cholesterol,st_depression,rest_ecg,num_vessels,diagnosis");
+
     let median_diagnosed = calculate_median(&diagnosed_with_disease);
     let median_not_diagnosed = calculate_median(&not_diagnosed_with_disease);
     println!("Median Symptoms for Patients Diagnosed with Heart Disease: {:?}", median_diagnosed);
@@ -173,5 +298,17 @@ fn main() {
     for (i, centroid) in centroids.iter().enumerate() {
         println!("Centroid {}: {:?}", i + 1, centroid);
     }
-}
 
+    // Construct a graph based on patient features
+    let graph = construct_patient_graph(&patients);
+
+    // Perform k-core decomposition
+    let k_core_value = 2; // Set the value of k for k-core decomposition
+    let cores = graph.k_core_decomposition(k_core_value);
+
+    // Output the k-core subgraphs
+    for (i, core) in cores.iter().enumerate() {
+        println!("K-Core {}: {:?}", i + 1, core);
+    }
+
+}
