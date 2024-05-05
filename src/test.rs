@@ -71,6 +71,30 @@ mod tests {
         let centroids = kmeans(k, &patients, max_iter);
 
         assert_eq!(centroids.len(), k);
+
+    let k = 3; // Number of representatives to select from each cluster
+    let centroids: Vec<Vec<f64>> = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]; // Example centroids
+    let clusters: Vec<Vec<Patient>> = vec![
+        vec![
+            Patient { features: vec![1.0, 2.0, 3.0], diagnosis: 1 },
+            Patient { features: vec![2.0, 3.0, 4.0], diagnosis: 1 },
+            // Add more patients for the first cluster
+        ],
+        vec![
+            Patient { features: vec![4.0, 5.0, 6.0], diagnosis: 0 },
+            Patient { features: vec![5.0, 6.0, 7.0], diagnosis: 0 },
+            // Add more patients for the second cluster
+        ],
+    ]; // Example clusters
+
+    // Find the k best representatives
+    let best_representatives = find_best_representatives(k, &centroids, &clusters);
+
+    // Print the best representatives
+    for (i, rep) in best_representatives.iter().enumerate() {
+        println!("Representative {}: {:?}", i + 1, rep);
     }
 
+    }
 }
+
