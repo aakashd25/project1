@@ -9,6 +9,7 @@ edition = "2021"
 csv = "1.1"
 rand = "0.8" 
 serde = "1.0.200"
+petgraph = "0.5.1"
 
 [[test]]
 name = "integration_tests"

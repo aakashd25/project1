@@ -116,6 +116,7 @@ pub fn find_best_representatives(k: usize, centroids: &[Vec<f64>], clusters: &[V
     best_representatives
 }
 
+
 fn main() -> Result<(), Box<dyn Error>> {
     // Load and Prepare the dataset
     let file_path = "heart_disease.csv";
@@ -176,5 +177,4 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("Cluster {}: {:?}", i + 1, representative);
     }
     Ok(())
-
 }
