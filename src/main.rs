@@ -1,24 +1,27 @@
 // DS 210 Final Project - Rust
 // Packages
+mod cluster;
 
-extern crate csv;
-extern crate rand;
+pub extern crate csv;
+pub extern crate rand;
 
-use rand::prelude::*;
-use std::error::Error;
-use std::fs::File;
-use std::path::Path;
+pub use rand::prelude::*;
+pub use std::error::Error;
+pub use std::fs::File;
+pub use std::path::Path;
+pub use csv::ReaderBuilder;
+
 
 // Define a struct to represent a patient
 #[derive(Debug, Clone)]
 #[derive(PartialEq)]
-struct Patient {
-    features: Vec<f64>,
-    diagnosis: u8,
+pub struct Patient {
+    pub features: Vec<f64>,
+    pub diagnosis: u8,
 }
 
 // Open and Read Heart Disease Dataset
-fn load_and_prepare_data(file_path: &str) -> Result<Vec<Patient>, csv::Error> {
+pub fn load_and_prepare_data(file_path: &str) -> Result<Vec<Patient>, csv::Error> {
     let mut rdr = csv::ReaderBuilder::new().from_path(file_path)?;
     let mut patients = Vec::new();
 
@@ -38,7 +41,7 @@ fn load_and_prepare_data(file_path: &str) -> Result<Vec<Patient>, csv::Error> {
 }
 
 // Primary Analysis: Split the data into patients diagnosed with heart disease (1) and those who are not (0)
-fn split_diagnosis(patients: &[Patient]) -> (Vec<Patient>, Vec<Patient>) {
+pub fn split_diagnosis(patients: &[Patient]) -> (Vec<Patient>, Vec<Patient>) {
     let mut diagnosed_with_disease = Vec::new();
     let mut not_diagnosed_with_disease = Vec::new();
 
@@ -54,7 +57,7 @@ fn split_diagnosis(patients: &[Patient]) -> (Vec<Patient>, Vec<Patient>) {
 }
 
 // Calculate median for all symptoms in each group and output the values
-fn calculate_median(patients: &[Patient]) -> Vec<f64> {
+pub fn calculate_median(patients: &[Patient]) -> Vec<f64> {
     let num_symptoms = patients[0].features.len();
     let mut medians = vec![0.0; num_symptoms];
 
@@ -75,92 +78,16 @@ fn calculate_median(patients: &[Patient]) -> Vec<f64> {
     medians
 }
 
-// Perform K-means clustering
-fn kmeans(k: usize, patients: &[Patient], max_iter: usize) -> Vec<Vec<f64>> {
-    let mut rng = thread_rng();
-    let num_features = patients[0].features.len();
-
-    // Initialize clusters with random centroids within the range of data values
-    let mut centroids: Vec<Vec<f64>> = (0..k)
-        .map(|_| {
-            let mut centroid = vec![0.0; num_features];
-            for j in 0..num_features {
-                let min_val = patients.iter().map(|p| p.features[j]).min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
-                let max_val = patients.iter().map(|p| p.features[j]).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
-                centroid[j] = rng.gen_range(min_val..max_val);
-            }
-            centroid
-        })
-        .collect();
-
-    // Iterate until convergence or maximum iterations reached
-    for _ in 0..max_iter {
-        let mut clusters: Vec<Vec<Patient>> = vec![Vec::new(); k];
-
-        // Assign each patient to the nearest cluster
-        for patient in patients {
-            let mut min_distance = f64::INFINITY;
-            let mut nearest_cluster_idx = 0;
-
-            for (i, centroid) in centroids.iter().enumerate() {
-                let distance = euclidean_distance(&patient.features, centroid);
-                if distance < min_distance {
-                    min_distance = distance;
-                    nearest_cluster_idx = i;
-                }
-            }
-
-            clusters[nearest_cluster_idx].push(patient.clone());
-        }
-
-        // Update cluster centroids
-        let mut converged = true;
-        for (i, cluster) in clusters.iter().enumerate() {
-            let num_members = cluster.len() as f64;
-            if num_members > 0.0 {
-                let mut new_centroid = vec![0.0; num_features];
-                for member in cluster {
-                    for (j, feature) in member.features.iter().enumerate() {
-                        new_centroid[j] += feature / num_members;
-                    }
-                }
-
-                if new_centroid != centroids[i] {
-                    converged = false;
-                    centroids[i] = new_centroid;
-                }
-            } else {
-                // Find the cluster with the maximum number of members and initialize the empty cluster centroid with its centroid
-                let max_cluster_idx = clusters.iter().enumerate().max_by_key(|&(_, c)| c.len()).map(|(idx, _)| idx).unwrap();
-                centroids[i] = centroids[max_cluster_idx].clone();
-            }
-        }
-
-        if converged {
-            break;
-        }
-    }
-
-    centroids
-}
-
-// Calculate Euclidean distance between two vectors
-fn euclidean_distance(vec1: &[f64], vec2: &[f64]) -> f64 {
-    vec1.iter()
-        .zip(vec2.iter())
-        .map(|(&x, &y)| (x - y).powi(2))
-        .sum::<f64>()
-        .sqrt()
-}
 
 // Function to find the k best representatives from each cluster
-fn find_best_representatives(k: usize, centroids: &[Vec<f64>], clusters: &[Vec<Patient>]) -> Vec<Vec<f64>> {
+pub fn find_best_representatives(k: usize, centroids: &[Vec<f64>], clusters: &[Vec<Patient>]) -> Vec<(Vec<f64>, u8)> {
     let mut best_representatives = Vec::new();
 
     // Iterate over each cluster
     for cluster in clusters {
         let mut min_avg_distance = f64::MAX;
         let mut best_representative = Vec::new();
+        let mut best_diagnosis = 0;
 
         // Iterate over each point in the cluster
         for point in cluster {
@@ -178,27 +105,34 @@ fn find_best_representatives(k: usize, centroids: &[Vec<f64>], clusters: &[Vec<P
             if avg_distance < min_avg_distance {
                 min_avg_distance = avg_distance;
                 best_representative = point.features.clone();
+                best_diagnosis = point.diagnosis;
             }
         }
 
         // Add the best representative of the cluster to the result
-        best_representatives.push(best_representative);
+        best_representatives.push((best_representative, best_diagnosis));
     }
 
     best_representatives
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn Error>> {
     // Load and Prepare the dataset
     let file_path = "heart_disease.csv";
     let patients = load_and_prepare_data(file_path).expect("Error loading data.");
 
+    let mut rdr = ReaderBuilder::new().from_path(file_path)?;
+    let headers = rdr.headers()?.clone();
+
+    // Print column headings
+    println!("Column Headings:");
+    for heading in headers.iter() {
+        print!("{}, ", heading);
+    }
+    println!(); // New line after printing headings
+
     // Primary Analysis
     let (diagnosed_with_disease, not_diagnosed_with_disease) = split_diagnosis(&patients);
-    println!("Patients Diagnosed with Heart Disease:");
-    println!("{:?}", diagnosed_with_disease);
-    println!("Patients Not Diagnosed with Heart Disease:");
-    println!("{:?}", not_diagnosed_with_disease);
 
     // Calculate Median for all symptoms in each group
     let median_diagnosed = calculate_median(&diagnosed_with_disease);
@@ -206,10 +140,10 @@ fn main() {
     println!("Median Symptoms for Patients Diagnosed with Heart Disease: {:?}", median_diagnosed);
     println!("Median Symptoms for Patients Not Diagnosed with Heart Disease: {:?}", median_not_diagnosed);
 
-    // Perform K-means clustering
-    let k = 4;
+    // Perform Clustering
+    let k = 2;
     let max_iter = 100;
-    let centroids = kmeans(k, &patients, max_iter);
+    let centroids = cluster::clustering(k, &patients, max_iter);
 
     // Print centroids
     for (i, centroid) in centroids.iter().enumerate() {
@@ -223,7 +157,7 @@ fn main() {
         let mut nearest_cluster_idx = 0;
 
         for (i, centroid) in centroids.iter().enumerate() {
-            let distance = euclidean_distance(&patient.features, centroid);
+            let distance = cluster::euclidean_distance(&patient.features, centroid);
             if distance < min_distance {
                 min_distance = distance;
                 nearest_cluster_idx = i;
@@ -241,5 +175,6 @@ fn main() {
     for (i, representative) in best_representatives.iter().enumerate() {
         println!("Cluster {}: {:?}", i + 1, representative);
     }
+    Ok(())
 
 }

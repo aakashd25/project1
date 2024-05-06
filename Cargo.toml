@@ -7,8 +7,9 @@ edition = "2021"
 
 [dependencies]
 csv = "1.1"
-linfa = "0.6"  
-linfa-clustering = "0.6"  
-ndarray = "0.15" 
 rand = "0.8" 
 serde = "1.0.200"
+
+[[test]]
+name = "integration_tests"
+path = "tests/integration_tests.rs"
